@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ENSOUL POS</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#211a15" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ENSOUL">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600&display=swap">
+<script src="config.js"></script>
+<style>
+:root{--bg:#fffdfb;--ink:#2a1e16;--muted:#7c6d62;--line:#e0d7cf;--accent:#6a4529;--accent-ink:#fff;--bad:#b0392a;color-scheme:light;
+  --f:"IBM Plex Sans Thai",system-ui,"Leelawadee UI","Thonburi",sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#17120f;--ink:#f2e9e1;--muted:#a8998d;--line:#382d25;--accent:#d0a178;--accent-ink:#1b130e;--bad:#f08b7c;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--f);-webkit-tap-highlight-color:transparent;overflow:hidden}
+#app{position:fixed;top:env(safe-area-inset-top,0px);right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);width:calc(100% - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));height:calc(100% - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));border:0;display:block;background:var(--bg)}
+.screen{position:fixed;inset:0;display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px));background:var(--bg);z-index:2;transition:opacity .35s}
+.screen.gone{opacity:0;pointer-events:none}
+.box{width:min(440px,100%);display:grid;gap:16px;text-align:center}
+.logo{width:160px;height:160px;margin:0 auto;border-radius:28px;display:block}
+@media (prefers-color-scheme:dark){.logo{box-shadow:0 0 0 1px var(--line)}}
+h1{margin:0;font-size:22px;font-weight:600}
+p{margin:0;color:var(--muted);font-size:14px;line-height:1.6}
+.bar{height:4px;width:140px;margin:4px auto 0;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:40%;background:var(--accent);border-radius:4px;animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@media (prefers-reduced-motion:reduce){.bar i{animation:none;width:100%}}
+input{font:inherit;color:inherit;width:100%;min-height:46px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:transparent;font-size:14px}
+input:focus{outline:none;border-color:var(--accent)}
+button{font:inherit;cursor:pointer;min-height:48px;border-radius:12px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600;padding:10px 18px}
+button.ghost{background:transparent;color:var(--accent);border-color:var(--line)}
+.err{color:var(--bad);font-size:13px;min-height:1.2em}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<iframe id="app" title="ENSOUL POS" allow="clipboard-write; camera" hidden></iframe>
+
+<div class="screen" id="splash">
+  <div class="box">
+    <img class="logo" src="icons/icon-512.png" alt="ENSOUL">
+    <div class="bar" id="bar"><i></i></div>
+    <p id="splash-msg">กำลังเปิด ENSOUL POS…</p>
+    <div id="splash-actions" hidden><button id="retry">ลองอีกครั้ง</button></div>
+  </div>
+</div>
+
+<div class="screen" id="setup" hidden>
+  <form class="box" id="setup-form" autocomplete="off">
+    <img class="logo" src="icons/icon-512.png" alt="ENSOUL">
+    <h1>ตั้งค่าแอปครั้งแรก</h1>
+    <p>วางลิงก์ Web app ของ ENSOUL POS<br>(ลิงก์ที่ขึ้นต้นด้วย script.google.com และลงท้ายด้วย /exec)</p>
+    <input id="url" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" required>
+    <div class="err" id="setup-err"></div>
+    <button type="submit">เริ่มใช้งาน</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "ensoul.appUrl";
+  var RE = /^https:\/\/script\.google\.com\/(macros|a\/macros\/[^\/]+)\/s\/[\w-]+\/exec$/;
+  var $ = function (id) { return document.getElementById(id); };
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+
+  var params = new URLSearchParams(location.search);
+  if (params.has("setup")) { store(KEY, null); history.replaceState(null, "", location.pathname); }
+  var url = (window.ENSOUL_APP_URL || "").trim() || store(KEY) || "";
+
+  var loadTimer = null;
+  function splash(msg, showRetry) {
+    $("splash").hidden = false; $("splash").classList.remove("gone");
+    $("splash-msg").textContent = msg; $("splash-actions").hidden = !showRetry; $("bar").hidden = !!showRetry;
+  }
+  function open() {
+    if (!url) { showSetup(); return; }
+    if (!navigator.onLine) { splash("ไม่มีอินเทอร์เน็ต ต่อ Wi-Fi หรือเน็ตมือถือแล้วกดลองอีกครั้ง", true); return; }
+    splash("กำลังเปิด ENSOUL POS…", false);
+    var f = $("app");
+    f.hidden = false;
+    f.onload = function () {
+      clearTimeout(loadTimer);
+      setTimeout(function () { $("splash").classList.add("gone"); setTimeout(function () { $("splash").hidden = true; }, 400); }, 300);
+    };
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(function () { splash("ยังโหลดไม่เสร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง", true); }, 25000);
+    f.src = url;
+  }
+  function showSetup(msg) {
+    $("splash").hidden = true; $("setup").hidden = false;
+    $("setup-err").textContent = msg || "";
+    setTimeout(function () { $("url").focus(); }, 50);
+  }
+  $("setup-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = $("url").value.trim().replace(/[?#].*$/, "");
+    if (!RE.test(v)) { $("setup-err").textContent = "ลิงก์ไม่ถูกต้อง ต้องเป็นลิงก์ Web app ที่ลงท้ายด้วย /exec"; return; }
+    url = v; store(KEY, v); $("setup").hidden = true; open();
+  });
+  $("retry").addEventListener("click", function () { $("app").src = "about:blank"; open(); });
+  window.addEventListener("online", function () { if (!$("splash-actions").hidden) open(); });
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+  open();
+})();
+</script>
+</body>
+</html>
